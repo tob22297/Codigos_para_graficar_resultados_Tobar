@@ -1,10 +1,5 @@
-"""Compara forma y escala con electrodos estáticos de 3 mm.
+""Compara forma y escala con electrodos estáticos de 3 mm.
 
-Produce dos figuras de líneas (máximo y promedio) con campo y densidad,
-y dos figuras de barras para ESCALA_BARRAS. Cada resultado se divide por
-la corriente de su propia curva; luego se promedian las cinco corrientes.
-Coloca este .py junto a resultados_tesis_consolidados.csv y ejecútalo.
-"""
 from pathlib import Path
 
 import matplotlib.pyplot as plt
