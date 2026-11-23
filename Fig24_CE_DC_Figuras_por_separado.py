@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.backends.backend_pdf import PdfPages
 
-# Coloca este script junto al CSV o indica su ruta con --archivo.
 CARPETA = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
 ARCHIVO = CARPETA / 'resultados_tesis_consolidados4.csv'
 ESCALA = 1.0
@@ -70,11 +69,7 @@ def leer_curvas(ruta, escala, ancho, distancia):
 
 
 def limites_capas(forma, longitud_total, escala):
-    """Supone las mismas líneas de corte que el código original.
 
-    El CSV contiene longitud de arco, pero no coordenadas: por sí solo no
-    permite verificar la ubicación de las interfaces sobre el recorrido.
-    """
     if forma == 'Circular':
         t = np.linspace(-0.007, 0.5, 20001)
         velocidad = np.pi * np.hypot(1.55 * np.sin(np.pi*t), 1.05 * np.cos(np.pi*t))
