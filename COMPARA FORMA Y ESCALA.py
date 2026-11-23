@@ -1,0 +1,139 @@
+"""Compara forma y escala con electrodos estáticos de 3 mm.
+
+Produce dos figuras de líneas (máximo y promedio) con campo y densidad,
+y dos figuras de barras para ESCALA_BARRAS. Cada resultado se divide por
+la corriente de su propia curva; luego se promedian las cinco corrientes.
+Coloca este .py junto a resultados_tesis_consolidados.csv y ejecútalo.
+"""
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+CARPETA = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+ENTRADA = CARPETA / "resultados_tesis_consolidados4.csv"
+SALIDA = CARPETA / "comparacion_forma_escala_3mm_estaticos"
+ESCALA_BARRAS = 1.0  # Puede ser 0.2, 0.4, 0.6, 0.8 o 1.0.
+GUARDAR_PNG = True
+FORMAS = ("circular", "rectangular", "triangular")
+ESCALAS = (0.2, 0.4, 0.6, 0.8, 1.0)
+CORRIENTES = (1, 3, 5, 7, 9)
+COLORES = {"circular": "#238557", "rectangular": "#c33f47",
+           "triangular": "#2359a3"}
+VARIABLES = (
+    ("campo_electrico_V_m", "Campo eléctrico", "(V/m)/µA", "campo"),
+    ("densidad_corriente_A_m2", "Densidad de corriente", "(A/m²)/µA", "densidad"),
+)
+
+
+def calcular_metricas(datos):
+    filas = []
+    for (forma, escala, corriente), curva in datos.groupby(
+        ["forma_herida", "escala", "corriente_uA"], sort=False
+    ):
+        curva = curva.sort_values("indice_punto_curva")
+        arco = curva["longitud_arco_mm"].to_numpy(dtype=float)
+        if len(arco) < 2 or arco[-1] <= arco[0] or np.any(np.diff(arco) < 0):
+            raise ValueError(f"Arco inválido: {forma}, escala {escala}, {corriente} µA")
+        fila = {"forma": forma, "escala": escala, "corriente_uA": corriente}
+        for columna, _, _, nombre in VARIABLES:
+            valores = curva[columna].to_numpy(dtype=float)
+            if not np.isfinite(valores).all():
+                raise ValueError(f"Valor no numérico: {forma}, {escala}, {corriente} µA")
+            fila[f"max_{nombre}_por_uA"] = float(valores.max()/corriente)
+            fila[f"media_{nombre}_por_uA"] = float(
+                np.trapezoid(valores, arco)/(arco[-1]-arco[0])/corriente
+            )
+        filas.append(fila)
+    metricas = pd.DataFrame(filas)
+    esperado = {(f, s, c) for f in FORMAS for s in ESCALAS for c in CORRIENTES}
+    real = set(zip(metricas.forma, metricas.escala, metricas.corriente_uA))
+    if real != esperado or len(metricas) != len(esperado):
+        raise ValueError(f"Faltan combinaciones: {sorted(esperado-real)}")
+    columnas = [c for c in metricas if c.endswith("_por_uA")]
+    resumen = metricas.groupby(["forma", "escala"], as_index=False)[columnas].mean()
+    # Auditoría de linealidad: dispersión de cada corriente respecto del promedio.
+    variaciones = []
+    for columna in columnas:
+        referencia = metricas.groupby(["forma", "escala"])[columna].transform("mean")
+        variaciones.append((abs(metricas[columna]-referencia)/referencia).max())
+    print("Mayor desviación de un valor normalizado frente a su configuración: "
+          f"{max(variaciones)*100:.4f} %")
+    return resumen
+
+
+def figura_lineas(resumen, estadistico):
+    etiqueta = "Máximo" if estadistico == "max" else "Promedio espacial"
+    fig, ejes = plt.subplots(1, 2, figsize=(16, 6.5), layout="constrained")
+    fig.suptitle(f"Forma y escala · {etiqueta.lower()} por µA\n"
+                 "Electrodo de 3 mm, distancia estática", fontsize=10)
+    for ax, (_, nombre_variable, unidad, nombre) in zip(ejes, VARIABLES):
+        col = f"{estadistico}_{nombre}_por_uA"
+        for forma in FORMAS:
+            tabla = resumen[resumen.forma == forma].set_index("escala")
+            ax.plot(ESCALAS, tabla.loc[list(ESCALAS), col], "o-",
+                    linewidth=2.7, markersize=8, color=COLORES[forma],
+                    label=forma.capitalize())
+        ax.set_title(f"{nombre_variable} · {etiqueta.lower()} por µA", fontsize=20)
+        ax.set_xlabel("Escala de la herida (0.2 casi cerrada; 1 abierta)", fontsize=15)
+        ax.set_ylabel(unidad, fontsize=18)
+        ax.set_xticks(ESCALAS)
+        ax.set_xlim(0.17, 1.03)
+        ax.set_ylim(bottom=0)
+        ax.tick_params(labelsize=20)
+        ax.grid(alpha=0.32)
+        ax.legend(title="Forma de la herida", fontsize=18, title_fontsize=18)
+    if GUARDAR_PNG:
+        fig.savefig(SALIDA / f"lineas_{estadistico}_por_uA.png", dpi=180)
+
+
+def figura_barras(resumen, estadistico):
+    etiqueta = "Máximo" if estadistico == "max" else "Promedio espacial"
+    elegida = resumen[np.isclose(resumen.escala, ESCALA_BARRAS)].set_index("forma")
+    if len(elegida) != 3:
+        raise ValueError("ESCALA_BARRAS debe ser una de las cinco escalas disponibles")
+    fig, ejes = plt.subplots(1, 2, figsize=(14, 6), layout="constrained")
+    fig.suptitle(f"Comparación entre formas · escala {ESCALA_BARRAS:g}\n"
+                 f"{etiqueta.lower()} por µA, electrodo de 3 mm estático", fontsize=10)
+    for ax, (_, nombre_variable, unidad, nombre) in zip(ejes, VARIABLES):
+        col = f"{estadistico}_{nombre}_por_uA"
+        valores = elegida.loc[list(FORMAS), col].to_numpy()
+        ax.bar([f.capitalize() for f in FORMAS], valores,
+               color=[COLORES[f] for f in FORMAS], width=0.65)
+        ax.set_title(nombre_variable, fontsize=20)
+        ax.set_ylabel(unidad, fontsize=20)
+        ax.set_ylim(bottom=0)
+        ax.tick_params(labelsize=20)
+        ax.grid(axis="y", alpha=0.28)
+        ax.set_axisbelow(True)
+    if GUARDAR_PNG:
+        fig.savefig(SALIDA / f"barras_{estadistico}_escala_{ESCALA_BARRAS:g}.png",
+                    dpi=180)
+
+
+def main():
+    if not ENTRADA.is_file():
+        raise FileNotFoundError(f"Coloca el CSV junto al script: {ENTRADA}")
+    columnas = ["forma_herida", "distancia_electrodos", "ancho_electrodo_mm",
+                "escala", "corriente_uA", "indice_punto_curva", "longitud_arco_mm"]
+    columnas += [v[0] for v in VARIABLES]
+    datos = pd.read_csv(ENTRADA, usecols=columnas)
+    datos = datos[(datos.ancho_electrodo_mm == 3)
+                  & (datos.distancia_electrodos == "estatica")]
+    resumen = calcular_metricas(datos)
+    if GUARDAR_PNG:
+        SALIDA.mkdir(exist_ok=True)
+        resumen.to_csv(SALIDA / "resumen_forma_escala_3mm_estaticos.csv",
+                       index=False, encoding="utf-8-sig")
+    for estadistico in ("max", "media"):
+        figura_lineas(resumen, estadistico)
+        figura_barras(resumen, estadistico)
+    print("Cuatro figuras: líneas y barras de máximo y promedio, ambas magnitudes.")
+    if GUARDAR_PNG:
+        print("Resultados en:", SALIDA)
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()
