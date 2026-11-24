@@ -2,7 +2,7 @@
 """
 Gráficas del póster: herida triangular, 5 µA, electrodos de 3 mm estáticos.
 Se muestran en el panel de Plots de Spyder (no se guarda nada).
-Cada bloque "# %%" se puede correr por separado (Ctrl+Enter).
+
 """
 
 # %% 0. CONFIGURACIÓN
